@@ -5,7 +5,60 @@ The backend of https://lorem.space lives here.
 * Scan the directory & categorize the image resources (only JPEG for now)
 * Provide HTTP API
 * Resize the image resources
+* Crop around a focal point (useful when a subject, such as a face, is off-center)
 * Cache option to store the resized image as a file
+
+## HTTP API
+
+`GET /image` returns a random image from a random category.
+`GET /image/{category}` returns a random image from the given category.
+
+Query parameters:
+
+* `w`: target width (integer, between `min-width` and `max-width`)
+* `h`: target height (integer, between `min-height` and `max-height`)
+* `fx`: horizontal focal point, from `0` (left edge) to `1` (right edge)
+* `fy`: vertical focal point, from `0` (top edge) to `1` (bottom edge)
+
+When both `w` and `h` are present, the image is cropped to the target aspect
+ratio. Without `fx`/`fy` the crop is centered, exactly as before. When a focal
+point is given, the crop window is centered on it and shifted inward wherever
+it would run past the source edge, so the subject stays visible. `fx` and `fy`
+are independent and default to `0.5` when omitted.
+
+The following parameter names are accepted for the same values:
+`fx` / `focus-x` / `focus_x` / `focusX` / `fpx` / `focal-x` / `focalPointX`,
+and `fy` / `focus-y` / `focus_y` / `focusY` / `fpy` / `focal-y` /
+`focalPointY`. Both axes can also be given together as
+`focus=<fx>,<fy>` (or `focal=`, `focalPoint=`).
+
+Examples:
+
+```
+# Face is on the right side of the photo
+GET /image/portraits?w=300&h=300&fx=0.8&fy=0.4
+GET /image/portraits?w=300&h=300&focus=0.8,0.4
+
+# Keep the bottom of a tall photo
+GET /image?w=1200&h=630&fy=0.75
+```
+
+Behavior:
+
+* No focal point (or `fx=0.5&fy=0.5`): center crop, stored in the original
+  cache location (`.cache/{w}x{h}/{file}`).
+* A non-center focal point: the crop is stored separately per focal point
+  (`.cache/{w}x{h}/focus/{fx}x{fy}/{file}`). Equivalent values such as `0.8`,
+  `0.80` and `.8` share one cache entry.
+* A focal point requires both `w` and `h`; otherwise `400 Bad Request` is
+  returned.
+* A focus value outside `[0, 1]`, a non-numeric value, `NaN` or `Inf` returns
+  `400 Bad Request` with a JSON error body. Conflicting values for the same
+  axis (for example `fx=0.2&focus-x=0.8`) are rejected the same way.
+* Extreme aspect ratios are clamped to the source image, and images smaller
+  than the requested size are upscaled instead of failing.
+* The response is always JPEG (`Content-Type: image/jpeg`) with a
+  `Content-Length` header.
 
 ## How to run
 
